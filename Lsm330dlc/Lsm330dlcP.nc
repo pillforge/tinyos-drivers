@@ -15,7 +15,7 @@ module Lsm330dlcP {
     interface Read<Accel_t> as AccelRead;
     interface Read<Gyro_t> as GyroRead;
     interface Msp430UsciConfigure;
-    interface Init;
+    interface SplitControl;
   }
 }
 
@@ -38,12 +38,24 @@ implementation {
   Accel_t accel; // 3 axes, 2 bytes each
   Gyro_t gyro; // 3 axes, 2 bytes each
 
-  uint8_t state = 0;
-  command error_t Init.init(){
-    state = 0;
+  enum {
+    STATE_IDLE = 0,
+    STATE_INIT,
+    STATE_FAIL,
+    STATE_ACCEL,
+    STATE_GYRO,
+  };
+
+  uint8_t state = STATE_IDLE;
+  command error_t SplitControl.start() {
+    state = STATE_INIT;
     call AccelCS.set();
     call GyroCS.set();
     call SpiResource.request();
+    return SUCCESS;
+  }
+
+  command error_t SplitControl.stop() {
     return SUCCESS;
   }
 
@@ -72,36 +84,64 @@ implementation {
     return rc;
   }
 
+  void spiRelease() {
+    call SpiResource.release();
+    state = STATE_IDLE;
+  }
+
   event void SpiResource.granted() {
     uint8_t who_am_i = 0;
-    who_am_i = readRegisterGyro(WHO_AM_I_G);
-    if (who_am_i == LSM330DLC_DEVICE_ID) {
-      // Configure Accelerometer for 400 Hz, High resolution
-      call AccelCS.clr();
-      writeRegister(CTRL_REG1_A, ACC_400_Hz_A | xyz_en_A);
-      call AccelCS.set();
-      call AccelCS.clr();
-      writeRegister(CTRL_REG4_A, HR_A | ACC_2G_A);
-      call AccelCS.set();
+    switch (state) {
+      case STATE_INIT:
+        who_am_i = readRegisterGyro(WHO_AM_I_G);
+        if (who_am_i == LSM330DLC_DEVICE_ID) {
+          // Configure Accelerometer for 400 Hz, High resolution
+          call AccelCS.clr();
+          writeRegister(CTRL_REG1_A, ACC_400_Hz_A | xyz_en_A);
+          call AccelCS.set();
+          call AccelCS.clr();
+          writeRegister(CTRL_REG4_A, HR_A | ACC_2G_A);
+          call AccelCS.set();
 
-      // Configure Gyro
-      call GyroCS.clr();
-      writeRegister(CTRL_REG1_G, DRBW_1000 | LPen_G | xyz_en_G);
-      call GyroCS.set();
-    } else {
-      // Try again
-      call SpiResource.release();
-      call SpiResource.request();
+          // Configure Gyro
+          call GyroCS.clr();
+          writeRegister(CTRL_REG1_G, DRBW_1000 | LPen_G | xyz_en_G);
+          call GyroCS.set();
+
+          signal SplitControl.startDone(SUCCESS);
+          spiRelease();
+        } else {
+          signal SplitControl.startDone(FAIL);
+          state = STATE_FAIL;
+          call SpiResource.release();
+        }
+        break;
+      case STATE_ACCEL:
+        post ReadAccelValues();
+        break;
+      case STATE_GYRO:
+        post ReadGyroValues();
+        break;
+      default:
+        spiRelease();
     }
   }
 
   command error_t AccelRead.read() {
-    post ReadAccelValues();
-    return SUCCESS;
+    if (state == STATE_IDLE) {
+      state = STATE_ACCEL;
+      call SpiResource.request();
+      return SUCCESS;
+    }
+    return FAIL;
   }
   command error_t GyroRead.read() {
-    post ReadGyroValues();
-    return SUCCESS;
+    if (state == STATE_IDLE) {
+      state = STATE_GYRO;
+      call SpiResource.request();
+      return SUCCESS;
+    }
+    return FAIL;
   }
 
   task void ReadAccelValues() {
@@ -111,6 +151,7 @@ implementation {
     accel.y = (int16_t)(((uint16_t) (readRegisterAccel(ACC_REG_OUT_Y_H) << 8)) + readRegisterAccel(ACC_REG_OUT_Y_L));
     accel.z = (int16_t)(((uint16_t) (readRegisterAccel(ACC_REG_OUT_Z_H) << 8)) + readRegisterAccel(ACC_REG_OUT_Z_L));
     signal AccelRead.readDone(SUCCESS, accel);
+    spiRelease();
   }
 
   task void ReadGyroValues() {
@@ -119,6 +160,7 @@ implementation {
     gyro.y = (int16_t)(((uint16_t) (readRegisterGyro(GYR_REG_OUT_Y_H) << 8)) + readRegisterGyro(GYR_REG_OUT_Y_L));
     gyro.z = (int16_t)(((uint16_t) (readRegisterGyro(GYR_REG_OUT_Z_H) << 8)) + readRegisterGyro(GYR_REG_OUT_Z_L));
     signal GyroRead.readDone(SUCCESS, gyro);
+    spiRelease();
   }
 
   async command const msp430_usci_config_t* Msp430UsciConfigure.getConfiguration() {
@@ -129,6 +171,9 @@ implementation {
   }
 
   default event void GyroRead.readDone(error_t err, Gyro_t val) {
+  }
+
+  default event void SplitControl.stopDone(error_t err) {
   }
 }
 

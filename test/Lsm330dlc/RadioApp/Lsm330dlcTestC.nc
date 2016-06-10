@@ -7,6 +7,7 @@
 module Lsm330dlcTestC {
   uses interface Boot;
   uses interface SplitControl as RadioSplitControl;
+  uses interface SplitControl as Lsm330SplitControl;
   uses interface Packet as RadioPacket;
   uses interface AMSend as RadioAMSend;
   uses interface Timer<TMilli> as AccelerometerAndGyroscopeTimer;
@@ -31,9 +32,18 @@ implementation {
   event void RadioSplitControl.startDone(error_t err) {
     if (err == SUCCESS) {
       printf("Radio started\n");
-      call AccelerometerAndGyroscopeTimer.startPeriodic(timer_rate);
+      call Lsm330SplitControl.start();
     } else {
       call RadioSplitControl.start();
+    }
+  }
+
+  event void Lsm330SplitControl.startDone(error_t err){
+    if (err == SUCCESS) {
+      printf("Lsm330 started\n");
+      call AccelerometerAndGyroscopeTimer.startPeriodic(timer_rate);
+    } else {
+      call Lsm330SplitControl.start();
     }
   }
 
@@ -59,6 +69,9 @@ implementation {
   }
 
   event void RadioSplitControl.stopDone(error_t err) {
+  }
+
+  event void Lsm330SplitControl.stopDone(error_t err) {
   }
 
   event void RadioAMSend.sendDone(message_t* bufPtr, error_t error) {

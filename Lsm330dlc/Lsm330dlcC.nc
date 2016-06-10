@@ -7,6 +7,7 @@
 #include "Lsm330dlc.h"
 configuration Lsm330dlcC {
   provides{
+    interface SplitControl;
     interface Read<Accel_t> as AccelRead;
     interface Read<Gyro_t> as GyroRead;
   }
@@ -18,7 +19,8 @@ implementation {
   components HplMsp430GeneralIOC as GPIO;
   components SerialPrintfC;
 
-  MainC.SoftwareInit -> Lsm330dlcP;
+  SplitControl = Lsm330dlcP.SplitControl;
+
   Lsm330dlcP.SpiByte -> Spi;
   Lsm330dlcP.Msp430UsciConfigure <- Spi;
   Lsm330dlcP.SpiResource -> Spi;
