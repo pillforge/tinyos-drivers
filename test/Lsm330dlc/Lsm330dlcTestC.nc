@@ -5,6 +5,7 @@
 
 module Lsm330dlcTestC {
   uses interface Boot;
+  uses interface SplitControl as Lsm330SplitControl;
   uses interface Timer<TMilli> as AccelerometerAndGyroscopeTimer;
   uses interface Read<Accel_t> as AccelerometerAndGyroscopeAccelRead;
   uses interface Read<Gyro_t> as AccelerometerAndGyroscopeGyroRead;
@@ -18,7 +19,16 @@ implementation {
 
   event void Boot.booted() {
     printf("Booted\n");
-    call AccelerometerAndGyroscopeTimer.startPeriodic(timer_rate);
+    call Lsm330SplitControl.start();
+  }
+
+  event void Lsm330SplitControl.startDone(error_t err) {
+    if (err == SUCCESS) {
+      printf("Lsm330 started\n");
+      call AccelerometerAndGyroscopeTimer.startPeriodic(timer_rate);
+    } else {
+      call Lsm330SplitControl.start();
+    }
   }
 
   event void AccelerometerAndGyroscopeTimer.fired() {
@@ -28,6 +38,8 @@ implementation {
     printf("%6d %6d %6d ", accel_data.x, accel_data.y, accel_data.z);
     printf("%6d %6d %6d\n", gyro_data.x, gyro_data.y, gyro_data.z);
   }
+
+  event void Lsm330SplitControl.stopDone(error_t err) {  }
 
   event void AccelerometerAndGyroscopeAccelRead.readDone(error_t err, Accel_t val) {
     accel_data = val;

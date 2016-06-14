@@ -14,6 +14,7 @@ implementation {
   App.AccelerometerAndGyroscopeTimer -> AccelerometerAndGyroscopeTimer;
 
   components Lsm330dlcC as AccelerometerAndGyroscope;
+  App.Lsm330SplitControl -> AccelerometerAndGyroscope.SplitControl;
   App.AccelerometerAndGyroscopeAccelRead -> AccelerometerAndGyroscope.AccelRead;
   App.AccelerometerAndGyroscopeGyroRead -> AccelerometerAndGyroscope.GyroRead;
 }

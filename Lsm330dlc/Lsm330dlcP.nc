@@ -44,6 +44,7 @@ implementation {
     STATE_FAIL,
     STATE_ACCEL,
     STATE_GYRO,
+    STATE_BOTH
   };
 
   uint8_t state = STATE_IDLE;
@@ -85,8 +86,12 @@ implementation {
   }
 
   void spiRelease() {
-    call SpiResource.release();
-    state = STATE_IDLE;
+    if (state == STATE_BOTH) {
+      state = STATE_ACCEL;
+    } else {
+      call SpiResource.release();
+      state = STATE_IDLE;
+    }
   }
 
   event void SpiResource.granted() {
@@ -122,6 +127,10 @@ implementation {
       case STATE_GYRO:
         post ReadGyroValues();
         break;
+      case STATE_BOTH:
+        post ReadAccelValues();
+        post ReadGyroValues();
+        break;
       default:
         spiRelease();
     }
@@ -132,6 +141,9 @@ implementation {
       state = STATE_ACCEL;
       call SpiResource.request();
       return SUCCESS;
+    } else if (state == STATE_GYRO) {
+      state = STATE_BOTH;
+      return SUCCESS;
     }
     return FAIL;
   }
@@ -139,6 +151,9 @@ implementation {
     if (state == STATE_IDLE) {
       state = STATE_GYRO;
       call SpiResource.request();
+      return SUCCESS;
+    } else if (state == STATE_ACCEL) {
+      state = STATE_BOTH;
       return SUCCESS;
     }
     return FAIL;
@@ -150,8 +165,8 @@ implementation {
     accel.x = (int16_t)(((uint16_t) (readRegisterAccel(ACC_REG_OUT_X_H) << 8)) + readRegisterAccel(ACC_REG_OUT_X_L));
     accel.y = (int16_t)(((uint16_t) (readRegisterAccel(ACC_REG_OUT_Y_H) << 8)) + readRegisterAccel(ACC_REG_OUT_Y_L));
     accel.z = (int16_t)(((uint16_t) (readRegisterAccel(ACC_REG_OUT_Z_H) << 8)) + readRegisterAccel(ACC_REG_OUT_Z_L));
-    signal AccelRead.readDone(SUCCESS, accel);
     spiRelease();
+    signal AccelRead.readDone(SUCCESS, accel);
   }
 
   task void ReadGyroValues() {
@@ -159,8 +174,8 @@ implementation {
     gyro.x = (int16_t)(((uint16_t) (readRegisterGyro(GYR_REG_OUT_X_H) << 8)) + readRegisterGyro(GYR_REG_OUT_X_L));
     gyro.y = (int16_t)(((uint16_t) (readRegisterGyro(GYR_REG_OUT_Y_H) << 8)) + readRegisterGyro(GYR_REG_OUT_Y_L));
     gyro.z = (int16_t)(((uint16_t) (readRegisterGyro(GYR_REG_OUT_Z_H) << 8)) + readRegisterGyro(GYR_REG_OUT_Z_L));
-    signal GyroRead.readDone(SUCCESS, gyro);
     spiRelease();
+    signal GyroRead.readDone(SUCCESS, gyro);
   }
 
   async command const msp430_usci_config_t* Msp430UsciConfigure.getConfiguration() {

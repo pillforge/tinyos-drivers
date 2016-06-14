@@ -49,7 +49,7 @@ implementation {
 
   event void AccelerometerAndGyroscopeTimer.fired() {
     call AccelerometerAndGyroscopeAccelRead.read();
-    call AccelerometerAndGyroscopeGyroRead.read();
+    /*call AccelerometerAndGyroscopeGyroRead.read();*/
     post RadioSendTask();
   }
 
