@@ -32,8 +32,11 @@ implementation {
     i2coa: 0
   };
 
-  task void ReadGyroValues();
-  task void ReadAccelValues();
+  void ReadGyroValues();
+  void ReadAccelValues();
+
+  bool reading_accel = FALSE;
+  bool reading_gyro = FALSE;
 
   Accel_t accel; // 3 axes, 2 bytes each
   Gyro_t gyro; // 3 axes, 2 bytes each
@@ -41,10 +44,7 @@ implementation {
   enum {
     STATE_IDLE = 0,
     STATE_INIT,
-    STATE_FAIL,
-    STATE_ACCEL,
-    STATE_GYRO,
-    STATE_BOTH
+    STATE_FAIL
   };
 
   uint8_t state = STATE_IDLE;
@@ -85,15 +85,6 @@ implementation {
     return rc;
   }
 
-  void spiRelease() {
-    if (state == STATE_BOTH) {
-      state = STATE_ACCEL;
-    } else {
-      call SpiResource.release();
-      state = STATE_IDLE;
-    }
-  }
-
   event void SpiResource.granted() {
     uint8_t who_am_i = 0;
     switch (state) {
@@ -114,67 +105,61 @@ implementation {
           call GyroCS.set();
 
           signal SplitControl.startDone(SUCCESS);
-          spiRelease();
+          call SpiResource.release();
+          state = STATE_IDLE;
         } else {
           signal SplitControl.startDone(FAIL);
           state = STATE_FAIL;
           call SpiResource.release();
         }
         break;
-      case STATE_ACCEL:
-        post ReadAccelValues();
-        break;
-      case STATE_GYRO:
-        post ReadGyroValues();
-        break;
-      case STATE_BOTH:
-        post ReadAccelValues();
-        post ReadGyroValues();
-        break;
       default:
-        spiRelease();
+        if (reading_accel) {
+          ReadAccelValues();
+          reading_accel = FALSE;
+        }
+        if (reading_gyro) {
+          ReadGyroValues();
+          reading_gyro = FALSE;
+        }
+        call SpiResource.release();
+        break;
     }
   }
 
   command error_t AccelRead.read() {
-    if (state == STATE_IDLE) {
-      state = STATE_ACCEL;
+    if (reading_accel) {
+      return FAIL;
+    } else {
+      reading_accel = TRUE;
       call SpiResource.request();
       return SUCCESS;
-    } else if (state == STATE_GYRO) {
-      state = STATE_BOTH;
-      return SUCCESS;
     }
-    return FAIL;
   }
   command error_t GyroRead.read() {
-    if (state == STATE_IDLE) {
-      state = STATE_GYRO;
+    if (reading_gyro) {
+      return FAIL;
+    } else {
+      reading_gyro = TRUE;
       call SpiResource.request();
       return SUCCESS;
-    } else if (state == STATE_ACCEL) {
-      state = STATE_BOTH;
-      return SUCCESS;
     }
-    return FAIL;
   }
 
-  task void ReadAccelValues() {
+  void ReadAccelValues() {
     // Read 6 bytes from accelerometer
     // This can be made more efficient by using the autoincrement
     accel.x = (int16_t)(((uint16_t) (readRegisterAccel(ACC_REG_OUT_X_H) << 8)) + readRegisterAccel(ACC_REG_OUT_X_L));
     accel.y = (int16_t)(((uint16_t) (readRegisterAccel(ACC_REG_OUT_Y_H) << 8)) + readRegisterAccel(ACC_REG_OUT_Y_L));
     accel.z = (int16_t)(((uint16_t) (readRegisterAccel(ACC_REG_OUT_Z_H) << 8)) + readRegisterAccel(ACC_REG_OUT_Z_L));
-    spiRelease();
     signal AccelRead.readDone(SUCCESS, accel);
   }
 
-  task void ReadGyroValues() {
+  void ReadGyroValues() {
     // Read 6 bytes from accelerometer
     gyro.x = (int16_t)(((uint16_t) (readRegisterGyro(GYR_REG_OUT_X_H) << 8)) + readRegisterGyro(GYR_REG_OUT_X_L));
     gyro.y = (int16_t)(((uint16_t) (readRegisterGyro(GYR_REG_OUT_Y_H) << 8)) + readRegisterGyro(GYR_REG_OUT_Y_L));
     gyro.z = (int16_t)(((uint16_t) (readRegisterGyro(GYR_REG_OUT_Z_H) << 8)) + readRegisterGyro(GYR_REG_OUT_Z_L));
-    spiRelease();
     signal GyroRead.readDone(SUCCESS, gyro);
   }
 
