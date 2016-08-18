@@ -1,0 +1,3 @@
+COMPONENT=Lsm303dTestAppC
+CFLAGS+=-I../../Lsm303d
+include $(MAKERULES)

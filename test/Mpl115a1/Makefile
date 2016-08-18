@@ -1,0 +1,3 @@
+COMPONENT=Mpl115a1TestAppC
+CFLAGS+=-I../../Mpl115a1
+include $(MAKERULES)
